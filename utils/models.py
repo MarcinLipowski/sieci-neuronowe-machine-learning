@@ -391,6 +391,7 @@ class TwoLayerNetwork:
         X = torch.FloatTensor(np.array(X_train))
         y = torch.FloatTensor(np.array(y_train))
 
+
         # y musi być (N, 1) dla operacji macierzowych
         if y.dim() == 1:
             y = y.unsqueeze(1)
@@ -409,6 +410,12 @@ class TwoLayerNetwork:
 
                 y_pred  = self.forward(X_batch)
                 loss    = self.compute_loss(y_pred, y_batch)
+                # Wykryj NaN zanim zepsuje wagi
+                if torch.isnan(loss):
+                    print(f"   NaN w epoce {epoch}, batch {start//batch_size}!")
+                    print(f"   X_batch stats: min={X_batch.min():.3f}, max={X_batch.max():.3f}")
+                    print(f"   y_pred stats:  min={y_pred.min():.3f}, max={y_pred.max():.3f}")
+                    break
                 g1, g2  = self.backward(y_batch)
 
                 epoch_loss += loss.item()
