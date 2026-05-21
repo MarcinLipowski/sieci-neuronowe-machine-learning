@@ -8,7 +8,7 @@ Zawiera:
 """
 import numpy as np
 from collections import Counter
-
+import torch
 
 class CategoricalNaiveBayes:
     """
@@ -260,3 +260,192 @@ class DecisionTreeCategorical:
         for value, child in node.branches.items():
             print(f"{indent}  = {value}:")
             self.print_tree(child, indent + "    ")
+
+
+class TwoLayerNetwork:
+    """
+    Sieć neuronowa z jedną warstwą ukrytą, zaimplementowana od zera w PyTorch.
+
+    Architektura: wejście → [warstwa ukryta: ReLU] → [wyjście: Sigmoid/Linear]
+
+    Wszystkie obliczenia forward i backward są jawne — bez nn.Module.
+    PyTorch używany tylko do operacji macierzowych i przechowywania tensorów.
+
+    Tryby pracy (mode):
+    - 'binary'      → wyjście Sigmoid + Binary Cross-Entropy  (klasyfikacja 0/1)
+    - 'regression'  → wyjście liniowe + MSE                   (regresja)
+    """
+
+    def __init__(self, n_input, n_hidden, n_output=1, lr=0.01, mode='binary'):
+        self.lr = lr
+        self.mode = mode
+
+        # Xavier initialization — skaluje wagi tak żeby wariancja aktywacji
+        # była stabilna przez warstwy (zapobiega zanikającemu/eksplodującemu gradientowi)
+        self.W1 = torch.randn(n_hidden, n_input)  * np.sqrt(2.0 / n_input)
+        self.b1 = torch.zeros(n_hidden)
+        self.W2 = torch.randn(n_output, n_hidden) * np.sqrt(2.0 / n_hidden)
+        self.b2 = torch.zeros(n_output)
+
+        # Historia błędów — do wykresów
+        self.history = {
+            'loss':           [],
+            'grad_norm_W1':   [],   # norma gradientu wag warstwy 1
+            'grad_norm_W2':   [],   # norma gradientu wag warstwy 2
+            'accuracy':       []    # tylko dla trybu binary
+        }
+
+    # ── Funkcje aktywacji ─────────────────────────────────────────────
+
+    def _relu(self, z):
+        return torch.clamp(z, min=0)
+
+    def _relu_derivative(self, z):
+        return (z > 0).float()
+
+    def _sigmoid(self, z):
+        return 1 / (1 + torch.exp(-torch.clamp(z, -50, 50)))  # clamp → stabilność
+
+    # ── Forward pass ──────────────────────────────────────────────────
+
+    def forward(self, X):
+        """
+        Propagacja sygnału od wejścia do wyjścia.
+        Zapamiętujemy z1, a1, z2 — potrzebne w backpropie.
+
+        X: (batch_size, n_input)
+        zwraca: (batch_size, n_output)
+        """
+        self.X_cache = X
+
+        self.z1 = X @ self.W1.T + self.b1          # (batch, n_hidden)
+        self.a1 = self._relu(self.z1)               # (batch, n_hidden)
+
+        self.z2 = self.a1 @ self.W2.T + self.b2    # (batch, n_output)
+
+        if self.mode == 'binary':
+            self.a2 = self._sigmoid(self.z2)        # (batch, n_output) ∈ (0,1)
+        else:
+            self.a2 = self.z2                       # liniowe dla regresji
+
+        return self.a2
+
+    # ── Funkcje straty ────────────────────────────────────────────────
+
+    def _bce_loss(self, y_pred, y_true, eps=1e-9):
+        """Binary Cross-Entropy"""
+        y_pred = torch.clamp(y_pred, eps, 1 - eps)
+        return -torch.mean(y_true * torch.log(y_pred) + (1 - y_true) * torch.log(1 - y_pred))
+
+    def _mse_loss(self, y_pred, y_true):
+        """Mean Squared Error"""
+        return torch.mean((y_pred - y_true) ** 2)
+
+    def compute_loss(self, y_pred, y_true):
+        if self.mode == 'binary':
+            return self._bce_loss(y_pred, y_true)
+        return self._mse_loss(y_pred, y_true)
+
+    # ── Backward pass ─────────────────────────────────────────────────
+
+    def backward(self, y_true):
+        """
+        Backpropagation — obliczenie gradientów przez regułę łańcuchową.
+
+        Dla BCE + Sigmoid gradient upraszcza się do: δ2 = (ŷ - y) / N
+        Dla MSE + Linear:                             δ2 = 2*(ŷ - y) / N
+        """
+        n = self.X_cache.shape[0]
+
+        # ── Gradient warstwy wyjściowej ──
+        if self.mode == 'binary':
+            delta2 = (self.a2 - y_true) / n          # (batch, n_output)
+        else:
+            delta2 = 2 * (self.a2 - y_true) / n
+
+        dW2 = delta2.T @ self.a1                      # (n_output, n_hidden)
+        db2 = delta2.sum(dim=0)                       # (n_output,)
+
+        # ── Propagacja wstecz przez warstwę ukrytą ──
+        delta1 = (delta2 @ self.W2) * self._relu_derivative(self.z1)  # (batch, n_hidden)
+
+        dW1 = delta1.T @ self.X_cache                 # (n_hidden, n_input)
+        db1 = delta1.sum(dim=0)                       # (n_hidden,)
+
+        # ── Aktualizacja wag (SGD) ──
+        self.W1 -= self.lr * dW1
+        self.b1 -= self.lr * db1
+        self.W2 -= self.lr * dW2
+        self.b2 -= self.lr * db2
+
+        return dW1.norm().item(), dW2.norm().item()
+
+    # ── Pętla treningowa ──────────────────────────────────────────────
+
+    def train_network(self, X_train, y_train, epochs=1000, batch_size=32, verbose=True):
+        """
+        Mini-batch SGD.
+
+        X_train, y_train: numpy arrays lub torch tensors
+        """
+        X = torch.FloatTensor(np.array(X_train))
+        y = torch.FloatTensor(np.array(y_train))
+
+        # y musi być (N, 1) dla operacji macierzowych
+        if y.dim() == 1:
+            y = y.unsqueeze(1)
+
+        n = X.shape[0]
+
+        for epoch in range(epochs):
+            # Losowa kolejność mini-batchy
+            perm = torch.randperm(n)
+            epoch_loss, epoch_g1, epoch_g2 = 0.0, 0.0, 0.0
+            n_batches = 0
+
+            for start in range(0, n, batch_size):
+                idx = perm[start:start + batch_size]
+                X_batch, y_batch = X[idx], y[idx]
+
+                y_pred  = self.forward(X_batch)
+                loss    = self.compute_loss(y_pred, y_batch)
+                g1, g2  = self.backward(y_batch)
+
+                epoch_loss += loss.item()
+                epoch_g1   += g1
+                epoch_g2   += g2
+                n_batches  += 1
+
+            # ── Zapis historii ──
+            avg_loss = epoch_loss / n_batches
+            self.history['loss'].append(avg_loss)
+            self.history['grad_norm_W1'].append(epoch_g1 / n_batches)
+            self.history['grad_norm_W2'].append(epoch_g2 / n_batches)
+
+            if self.mode == 'binary':
+                with torch.no_grad():
+                    preds = self.forward(X)
+                    acc = ((preds > 0.5).float() == y).float().mean().item()
+                    self.history['accuracy'].append(acc)
+
+            if verbose and epoch % max(1, epochs // 10) == 0:
+                acc_str = f" | Acc: {self.history['accuracy'][-1]:.4f}" if self.mode == 'binary' else ""
+                print(f"Epoch {epoch:5d}/{epochs} | Loss: {avg_loss:.6f}{acc_str}")
+
+        return self.history
+
+    # ── Predykcja ─────────────────────────────────────────────────────
+
+    def predict(self, X):
+        X_t = torch.FloatTensor(np.array(X))
+        with torch.no_grad():
+            out = self.forward(X_t)
+        if self.mode == 'binary':
+            return (out > 0.5).float().numpy().flatten()
+        return out.numpy().flatten()
+
+    def predict_proba(self, X):
+        """Tylko dla trybu binary — zwraca prawdopodobieństwa."""
+        X_t = torch.FloatTensor(np.array(X))
+        with torch.no_grad():
+            return self.forward(X_t).numpy().flatten()
