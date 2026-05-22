@@ -18,30 +18,15 @@ build/
 .ipynb_checkpoints/
 *.ipynb_checkpoints
 
-# ── Dane i modele (mogą być duże) ───────────────────────────────────
-data/
-**/data/
-datasets/
-*.csv
-*.xlsx
-*.json
-*.h5
+# ── Duże datasety (pobierane automatycznie przez torchvision) ────────
+3_cnn_mnist/data/
+4_advanced_training/data/
+
+# ── Modele (duże pliki) ──────────────────────────────────────────────
 *.pt
 *.pth
 *.pkl
 *.pickle
-
-# ── CIFAR-10 / torchvision cache ────────────────────────────────────
-**/cifar-10-batches-py/
-**/cifar-10-python.tar.gz
-**/CIFAR10/
-**/MNIST/
-**/FashionMNIST/
-
-# ── Wyniki i wykresy (generowane automatycznie) ─────────────────────
-plots/
-outputs/
-results/
 
 # ── VS Code ─────────────────────────────────────────────────────────
 .vscode/
