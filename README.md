@@ -89,16 +89,3 @@ pobierają się automatycznie przez `torchvision` (~180MB łącznie).
 | `DecisionTreeCategorical` | Drzewo dla cech kategorycznych, kryterium Gini |
 | `DecisionTreeRegressor` | Drzewo dla regresji, kryterium wariancji (MSE) |
 | `TwoLayerNetwork` | Sieć dwuwarstwowa, jawny forward/backward, SGD, tryby binary/regression |
-
----
-
-## Wymagania sprzętowe
-
-| Zadanie | CPU | GPU (NVIDIA) |
-|---------|-----|-------------|
-| Naiwny Bayes, Drzewo, XOR | < 1 min | — |
-| Titanic, Boston Housing | < 5 min | — |
-| MNIST (10 epok) | ~3 min | ~50 sek |
-| CIFAR-10 (50 epok) | ~45 min | ~10 min |
-
-Testowano na: Windows 11, Python 3.13, PyTorch 2.12 (CUDA 13.2), RTX 4070 Ti.
