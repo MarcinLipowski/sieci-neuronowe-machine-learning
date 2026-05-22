@@ -1,5 +1,3 @@
-# plik: plotting.py — importuj w każdym notebooku
-
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import seaborn as sns
@@ -7,7 +5,7 @@ import numpy as np
 import os
 from pathlib import Path
 
-# ─── Styl globalny ───────────────────────────────────────────────────
+# Styl globalny
 plt.rcParams.update({
     'figure.dpi': 150,
     'figure.figsize': (10, 6),
@@ -33,7 +31,7 @@ def save(fig, name):
     return path
 
 
-# ─── EDA ─────────────────────────────────────────────────────────────
+# EDA
 
 def plot_class_distribution(y, class_names=None, title="Rozkład klas", save_name=None):
     """Wykres słupkowy rozkładu klas."""
@@ -154,7 +152,7 @@ def plot_boxplots(df, columns, by=None, title="Boxploty", save_name=None):
     return fig
 
 
-# ─── Trening sieci ────────────────────────────────────────────────────
+# Trening sieci
 
 def plot_training_history(history, title="Historia uczenia", save_name=None):
     """
@@ -164,14 +162,14 @@ def plot_training_history(history, title="Historia uczenia", save_name=None):
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
     epochs = range(1, len(history['loss']) + 1)
     
-    # ── Strata globalna
+    # Strata globalna
     axes[0].plot(epochs, history['loss'], color=PALETTE[0], linewidth=2)
     axes[0].set_title("Strata (globalna)")
     axes[0].set_xlabel("Epoka")
     axes[0].set_ylabel("Loss")
     axes[0].set_yscale('log')
     
-    # ── Gradienty (błędy) warstw
+    # Gradienty (błędy) warstw
     if 'loss_layer1' in history and 'loss_layer2' in history:
         axes[1].plot(epochs, history['loss_layer1'], label='Warstwa 1', color=PALETTE[0], linewidth=2)
         axes[1].plot(epochs, history['loss_layer2'], label='Warstwa 2', color=PALETTE[1], linewidth=2)
@@ -181,7 +179,7 @@ def plot_training_history(history, title="Historia uczenia", save_name=None):
         axes[1].legend()
         axes[1].set_yscale('log')
     
-    # ── Accuracy
+    # Accuracy
     if 'accuracy' in history:
         axes[2].plot(epochs, history['accuracy'], color=PALETTE[2], linewidth=2)
         if 'val_accuracy' in history:
@@ -205,7 +203,7 @@ def plot_confusion_matrix(y_true, y_pred, class_names=None,
     """Macierz konfuzji jako heatmapa."""
     from sklearn.metrics import confusion_matrix
     cm = confusion_matrix(y_true, y_pred)
-    cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True)  # normalizacja po wierszach
+    cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True)
     
     n = len(cm)
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))

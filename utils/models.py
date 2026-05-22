@@ -1,11 +1,3 @@
-"""
-utils/models.py — Implementacje modeli ML od zera.
-
-Zawiera:
-- CategoricalNaiveBayes: klasyfikator Bayesowski dla cech kategorycznych
-- (później) DecisionTree
-- (później) TwoLayerNetwork
-"""
 import numpy as np
 from collections import Counter
 import torch
@@ -42,29 +34,28 @@ class CategoricalNaiveBayes:
         self.classes = np.unique(y)
         n_samples = len(y)
         
-        # Zapamiętaj wszystkie unikalne wartości każdej cechy
-        # (potrzebne do wygładzania Laplace'a — znamy mianownik)
+
         for feature in self.feature_names:
             self.feature_values[feature] = X[feature].unique().tolist()
         
         # Dla każdej klasy oblicz prior i likelihood dla każdej cechy
         for c in self.classes:
-            # ── Prior: P(c) ──
-            mask = (y == c)                     # logiczna maska próbek tej klasy
-            n_class = mask.sum()                 # ile próbek w klasie c
+            # Prior: P(c)
+            mask = (y == c)
+            n_class = mask.sum()
             self.priors[c] = n_class / n_samples
             
-            # ── Likelihoods: P(cecha=v | c) dla każdej cechy i wartości ──
+            # Likelihoods: P(cecha=v | c) dla każdej cechy i wartości
             self.likelihoods[c] = {}
-            X_class = X[mask]                    # tylko próbki klasy c
+            X_class = X[mask]
             
             for feature in self.feature_names:
-                n_unique = len(self.feature_values[feature])  # liczba unikalnych wartości tej cechy
+                n_unique = len(self.feature_values[feature])
                 value_counts = X_class[feature].value_counts().to_dict()
                 
                 self.likelihoods[c][feature] = {}
                 for value in self.feature_values[feature]:
-                    count = value_counts.get(value, 0)  # 0 jeśli wartość nie występuje
+                    count = value_counts.get(value, 0)
                     # Wygładzanie Laplace'a
                     self.likelihoods[c][feature][value] = (count + self.alpha) / (n_class + self.alpha * n_unique)
         
@@ -73,7 +64,7 @@ class CategoricalNaiveBayes:
     def predict_log_proba(self, X):
         """
         Zwraca log P(c|x) dla każdej próbki i klasy.
-        Używamy logarytmów żeby uniknąć underflow (mnożenia małych liczb).
+        Wykożystanie logarytmów żeby uniknąć underflow.
         """
         results = []
         for _, row in X.iterrows():
@@ -81,14 +72,13 @@ class CategoricalNaiveBayes:
             for c in self.classes:
                 # log P(c)
                 log_prob = np.log(self.priors[c])
-                # + Σ log P(cecha_i = wartość_i | c)
                 for feature in self.feature_names:
                     value = row[feature]
-                    # Jeśli wartość nieznana (np. nie była w treningu), używamy wygładzania
+                    # Jeśli wartość nieznana, używamy wygładzania
                     if value in self.likelihoods[c][feature]:
                         log_prob += np.log(self.likelihoods[c][feature][value])
                     else:
-                        # Wartość nigdy nie widziana — przypisujemy bardzo małe prawdopodobieństwo
+                        # Wartość nigdy nie widziana - przypisujemy małe prawdopodobieństwo
                         n_unique = len(self.feature_values[feature])
                         n_class_total = sum(self.likelihoods[c][feature].values()) * (1 + self.alpha * n_unique)
                         log_prob += np.log(self.alpha / (n_class_total + self.alpha * n_unique))
@@ -111,7 +101,7 @@ class CategoricalNaiveBayes:
         for lp in log_probs:
             # log-sum-exp trick
             log_values = np.array([lp[c] for c in self.classes])
-            log_values_shifted = log_values - log_values.max()  # stabilność numeryczna
+            log_values_shifted = log_values - log_values.max()
             exp_values = np.exp(log_values_shifted)
             probas.append(exp_values / exp_values.sum())
         return np.array(probas)
@@ -120,14 +110,13 @@ class CategoricalNaiveBayes:
         """Accuracy na zbiorze X, y."""
         return np.mean(self.predict(X) == y)
     
-
+# Pojedynczy węzeł drzewa decyzyjnego.
 class Node:
-    """Pojedynczy węzeł drzewa decyzyjnego."""
     
     def __init__(self, feature=None, branches=None, prediction=None, fallback=None):
-        self.feature = feature           # nazwa cechy do podziału (tylko węzły wewnętrzne)
+        self.feature = feature           # nazwa cechy do podziału
         self.branches = branches or {}   # słownik: {wartość_cechy: Node}
-        self.prediction = prediction     # klasa (TYLKO w liściu, None w węzłach wewnętrznych)
+        self.prediction = prediction     # klasa
         self.fallback = fallback         # większościowa klasa w węźle (dla nieznanych wartości)
     
     def is_leaf(self):
@@ -156,7 +145,6 @@ class DecisionTreeCategorical:
         self.feature_names = None
     
     def _gini(self, y):
-        """Gini Impurity: 1 - Σ p_i²"""
         if len(y) == 0:
             return 0
         counts = Counter(y)
@@ -164,7 +152,7 @@ class DecisionTreeCategorical:
         return 1 - sum((c / n) ** 2 for c in counts.values())
     
     def _weighted_gini_after_split(self, X, y, feature):
-        """Średnia ważona Gini po podziale po danej cesze."""
+        # Średnia ważona Gini po podziale po danej cesze.
         n = len(y)
         weighted_gini = 0
         for value in X[feature].unique():
@@ -174,7 +162,7 @@ class DecisionTreeCategorical:
         return weighted_gini
     
     def _best_feature(self, X, y, available_features):
-        """Wybierz cechę dającą największy spadek Gini (information gain)."""
+        # Wybierz cechę dającą największy spadek Gini (information gain).
         parent_gini = self._gini(y)
         best_gain = -float('inf')
         best_feature = None
@@ -189,7 +177,7 @@ class DecisionTreeCategorical:
         return best_feature, best_gain
     
     def _build_tree(self, X, y, available_features, depth):
-        """Rekurencyjne budowanie drzewa."""
+        # Rekurencyjne budowanie drzewa.
         majority_class = Counter(y).most_common(1)[0][0]
         
         # Warunki stopu — utwórz liść
@@ -202,7 +190,7 @@ class DecisionTreeCategorical:
         # Znajdź najlepszą cechę do podziału
         best_feature, gain = self._best_feature(X, y, available_features)
         
-        # Jeśli podział nie poprawia jakości — liść
+        # Jeśli podział nie poprawia jakości - liść
         if gain <= 1e-10:
             return Node(prediction=majority_class)
         
@@ -230,7 +218,7 @@ class DecisionTreeCategorical:
         return self
     
     def _predict_one(self, row, node):
-        """Predykcja dla jednej próbki — przejście drzewem od korzenia do liścia."""
+        # Predykcja dla jednej próbki — przejście drzewem od korzenia do liścia.
         if node.is_leaf():
             return node.prediction
         
@@ -248,7 +236,7 @@ class DecisionTreeCategorical:
         return np.mean(self.predict(X) == y)
     
     def print_tree(self, node=None, indent=""):
-        """Wyświetlenie drzewa w czytelnej formie tekstowej."""
+        # Wyświetlenie drzewa w czytelnej formie tekstowej.
         if node is None:
             node = self.root
         
@@ -264,16 +252,15 @@ class DecisionTreeCategorical:
 
 class TwoLayerNetwork:
     """
-    Sieć neuronowa z jedną warstwą ukrytą, zaimplementowana od zera w PyTorch.
+    Sieć neuronowa z jedną warstwą ukrytą w PyTorch.
 
     Architektura: wejście → [warstwa ukryta: ReLU] → [wyjście: Sigmoid/Linear]
 
-    Wszystkie obliczenia forward i backward są jawne — bez nn.Module.
-    PyTorch używany tylko do operacji macierzowych i przechowywania tensorów.
+    Wszystkie obliczenia forward i backward są jawne.
 
     Tryby pracy (mode):
-    - 'binary'      → wyjście Sigmoid + Binary Cross-Entropy  (klasyfikacja 0/1)
-    - 'regression'  → wyjście liniowe + MSE                   (regresja)
+    - 'binary'      -> wyjście Sigmoid + Binary Cross-Entropy  (klasyfikacja 0/1)
+    - 'regression'  -> wyjście liniowe + MSE                   (regresja)
     """
 
     def __init__(self, n_input, n_hidden, n_output=1, lr=0.01, mode='binary'):
@@ -281,7 +268,7 @@ class TwoLayerNetwork:
         self.mode = mode
 
         # Xavier initialization — skaluje wagi tak żeby wariancja aktywacji
-        # była stabilna przez warstwy (zapobiega zanikającemu/eksplodującemu gradientowi)
+        # była stabilna przez warstwy
         self.W1 = torch.randn(n_hidden, n_input)  * np.sqrt(2.0 / n_input)
         self.b1 = torch.zeros(n_hidden)
         self.W2 = torch.randn(n_output, n_hidden) * np.sqrt(2.0 / n_hidden)
@@ -295,7 +282,7 @@ class TwoLayerNetwork:
             'accuracy':       []    # tylko dla trybu binary
         }
 
-    # ── Funkcje aktywacji ─────────────────────────────────────────────
+    # Funkcje aktywacji
 
     def _relu(self, z):
         return torch.clamp(z, min=0)
@@ -304,9 +291,9 @@ class TwoLayerNetwork:
         return (z > 0).float()
 
     def _sigmoid(self, z):
-        return 1 / (1 + torch.exp(-torch.clamp(z, -50, 50)))  # clamp → stabilność
+        return 1 / (1 + torch.exp(-torch.clamp(z, -50, 50)))
 
-    # ── Forward pass ──────────────────────────────────────────────────
+    # Forward pass
 
     def forward(self, X):
         """
@@ -318,27 +305,27 @@ class TwoLayerNetwork:
         """
         self.X_cache = X
 
-        self.z1 = X @ self.W1.T + self.b1          # (batch, n_hidden)
-        self.a1 = self._relu(self.z1)               # (batch, n_hidden)
+        self.z1 = X @ self.W1.T + self.b1
+        self.a1 = self._relu(self.z1)
 
-        self.z2 = self.a1 @ self.W2.T + self.b2    # (batch, n_output)
+        self.z2 = self.a1 @ self.W2.T + self.b2
 
         if self.mode == 'binary':
-            self.a2 = self._sigmoid(self.z2)        # (batch, n_output) ∈ (0,1)
+            self.a2 = self._sigmoid(self.z2)
         else:
-            self.a2 = self.z2                       # liniowe dla regresji
+            self.a2 = self.z2
 
         return self.a2
 
-    # ── Funkcje straty ────────────────────────────────────────────────
+    # Funkcje straty
 
     def _bce_loss(self, y_pred, y_true, eps=1e-9):
-        """Binary Cross-Entropy"""
+        # Binary Cross-Entropy
         y_pred = torch.clamp(y_pred, eps, 1 - eps)
         return -torch.mean(y_true * torch.log(y_pred) + (1 - y_true) * torch.log(1 - y_pred))
 
     def _mse_loss(self, y_pred, y_true):
-        """Mean Squared Error"""
+        # Mean Squared Error
         return torch.mean((y_pred - y_true) ** 2)
 
     def compute_loss(self, y_pred, y_true):
@@ -346,33 +333,28 @@ class TwoLayerNetwork:
             return self._bce_loss(y_pred, y_true)
         return self._mse_loss(y_pred, y_true)
 
-    # ── Backward pass ─────────────────────────────────────────────────
+    # Backward pass
 
     def backward(self, y_true):
-        """
-        Backpropagation — obliczenie gradientów przez regułę łańcuchową.
-
-        Dla BCE + Sigmoid gradient upraszcza się do: δ2 = (ŷ - y) / N
-        Dla MSE + Linear:                             δ2 = 2*(ŷ - y) / N
-        """
+        # Backpropagation — obliczenie gradientów przez regułę łańcuchową.
         n = self.X_cache.shape[0]
 
-        # ── Gradient warstwy wyjściowej ──
+        # Gradient warstwy wyjściowej
         if self.mode == 'binary':
-            delta2 = (self.a2 - y_true) / n          # (batch, n_output)
+            delta2 = (self.a2 - y_true) / n
         else:
             delta2 = 2 * (self.a2 - y_true) / n
 
-        dW2 = delta2.T @ self.a1                      # (n_output, n_hidden)
-        db2 = delta2.sum(dim=0)                       # (n_output,)
+        dW2 = delta2.T @ self.a1
+        db2 = delta2.sum(dim=0)
 
-        # ── Propagacja wstecz przez warstwę ukrytą ──
-        delta1 = (delta2 @ self.W2) * self._relu_derivative(self.z1)  # (batch, n_hidden)
+        # Propagacja wstecz przez warstwę ukrytą
+        delta1 = (delta2 @ self.W2) * self._relu_derivative(self.z1)
 
-        dW1 = delta1.T @ self.X_cache                 # (n_hidden, n_input)
-        db1 = delta1.sum(dim=0)                       # (n_hidden,)
+        dW1 = delta1.T @ self.X_cache
+        db1 = delta1.sum(dim=0)
 
-        # ── Aktualizacja wag (SGD) ──
+        # Aktualizacja wag (SGD)
         self.W1 -= self.lr * dW1
         self.b1 -= self.lr * db1
         self.W2 -= self.lr * dW2
@@ -380,14 +362,9 @@ class TwoLayerNetwork:
 
         return dW1.norm().item(), dW2.norm().item()
 
-    # ── Pętla treningowa ──────────────────────────────────────────────
+    # Pętla treningowa
 
     def train_network(self, X_train, y_train, epochs=1000, batch_size=32, verbose=True):
-        """
-        Mini-batch SGD.
-
-        X_train, y_train: numpy arrays lub torch tensors
-        """
         X = torch.FloatTensor(np.array(X_train))
         y = torch.FloatTensor(np.array(y_train))
 
@@ -423,7 +400,7 @@ class TwoLayerNetwork:
                 epoch_g2   += g2
                 n_batches  += 1
 
-            # ── Zapis historii ──
+            # Zapis historii
             avg_loss = epoch_loss / n_batches
             self.history['loss'].append(avg_loss)
             self.history['grad_norm_W1'].append(epoch_g1 / n_batches)
@@ -441,7 +418,7 @@ class TwoLayerNetwork:
 
         return self.history
 
-    # ── Predykcja ─────────────────────────────────────────────────────
+    # Predykcja
 
     def predict(self, X):
         X_t = torch.FloatTensor(np.array(X))
@@ -452,14 +429,14 @@ class TwoLayerNetwork:
         return out.numpy().flatten()
 
     def predict_proba(self, X):
-        """Tylko dla trybu binary — zwraca prawdopodobieństwa."""
+        # Tylko dla trybu binary — zwraca prawdopodobieństwa.
         X_t = torch.FloatTensor(np.array(X))
         with torch.no_grad():
             return self.forward(X_t).numpy().flatten()
 
 class DecisionTreeRegressor:
     """
-    Drzewo decyzyjne dla regresji — od zera.
+    Drzewo decyzyjne dla regresji.
     Zamiast Gini używa wariancji (MSE) jako kryterium podziału.
     """
 
