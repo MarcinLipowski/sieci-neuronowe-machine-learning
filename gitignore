@@ -30,6 +30,13 @@ datasets/
 *.pkl
 *.pickle
 
+# ── CIFAR-10 / torchvision cache ────────────────────────────────────
+**/cifar-10-batches-py/
+**/cifar-10-python.tar.gz
+**/CIFAR10/
+**/MNIST/
+**/FashionMNIST/
+
 # ── Wyniki i wykresy (generowane automatycznie) ─────────────────────
 plots/
 outputs/
