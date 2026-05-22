@@ -5,7 +5,7 @@ Implementacje algorytmów ML i sieci neuronowych **od zera** — bez gotowych
 modeli z bibliotek. PyTorch używany wyłącznie do operacji macierzowych i
 automatycznego różniczkowania w CNN.
 
----
+--- 
 
 ## Struktura projektu
 
