@@ -456,3 +456,87 @@ class TwoLayerNetwork:
         X_t = torch.FloatTensor(np.array(X))
         with torch.no_grad():
             return self.forward(X_t).numpy().flatten()
+
+class DecisionTreeRegressor:
+    """
+    Drzewo decyzyjne dla regresji — od zera.
+    Zamiast Gini używa wariancji (MSE) jako kryterium podziału.
+    """
+
+    def __init__(self, max_depth=5, min_samples_split=10):
+        self.max_depth = max_depth
+        self.min_samples_split = min_samples_split
+        self.root = None
+
+    def _mse(self, y):
+        if len(y) == 0:
+            return 0
+        return np.var(y)
+
+    def _best_split(self, X, y):
+        best_gain = -float('inf')
+        best_feature, best_threshold = None, None
+        parent_mse = self._mse(y)
+        n = len(y)
+
+        for feature_idx in range(X.shape[1]):
+            thresholds = np.unique(X[:, feature_idx])
+            for threshold in thresholds:
+                left_mask  = X[:, feature_idx] <= threshold
+                right_mask = ~left_mask
+                if left_mask.sum() < self.min_samples_split or \
+                   right_mask.sum() < self.min_samples_split:
+                    continue
+                left_mse  = self._mse(y[left_mask])
+                right_mse = self._mse(y[right_mask])
+                weighted  = (left_mask.sum() * left_mse +
+                             right_mask.sum() * right_mse) / n
+                gain = parent_mse - weighted
+                if gain > best_gain:
+                    best_gain      = gain
+                    best_feature   = feature_idx
+                    best_threshold = threshold
+
+        return best_feature, best_threshold, best_gain
+
+    def _build(self, X, y, depth):
+        if depth >= self.max_depth or len(y) < self.min_samples_split:
+            return {'leaf': True, 'value': np.mean(y)}
+
+        feature, threshold, gain = self._best_split(X, y)
+        if feature is None or gain <= 0:
+            return {'leaf': True, 'value': np.mean(y)}
+
+        left_mask  = X[:, feature] <= threshold
+        right_mask = ~left_mask
+
+        return {
+            'leaf':      False,
+            'feature':   feature,
+            'threshold': threshold,
+            'left':      self._build(X[left_mask],  y[left_mask],  depth + 1),
+            'right':     self._build(X[right_mask], y[right_mask], depth + 1)
+        }
+
+    def fit(self, X, y):
+        self.root = self._build(X, y, depth=0)
+        return self
+
+    def _predict_one(self, x, node):
+        if node['leaf']:
+            return node['value']
+        if x[node['feature']] <= node['threshold']:
+            return self._predict_one(x, node['left'])
+        return self._predict_one(x, node['right'])
+
+    def predict(self, X):
+        return np.array([self._predict_one(x, self.root) for x in X])
+
+    def score_r2(self, X, y):
+        y_pred = self.predict(X)
+        ss_res = np.sum((y - y_pred)**2)
+        ss_tot = np.sum((y - y.mean())**2)
+        return 1 - ss_res / ss_tot
+
+    def score_mae(self, X, y):
+        return np.mean(np.abs(self.predict(X) - y))
